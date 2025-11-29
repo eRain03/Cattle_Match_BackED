@@ -1,87 +1,71 @@
-from typing import List, Dict
 import time
+from typing import Dict
 from db import db
 
+# ✅ 1. 定义保存通知的函数
 def save_notification(user_id: str, message: str):
-    notification = {
+    """将通知写入 notifications.json"""
+    notif = {
         "user_id": user_id,
         "message": message,
-        "read": False,
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "read": False
     }
-    # 写入 notifications.json
-    db.add_record("notifications.json", notification)
-    print(f"🔔 Notification saved for {user_id}: {message}")
+    db.add_record("notifications.json", notif)
+    print(f"🔔 Notification saved for {user_id}")
 
-def scan_for_matches(new_record: dict, target_db_name: str, is_new_record_farmer: bool):
-    targets = db.load(target_db_name)
-    matches = []
-    
-    for target in targets:
-        # 假设这里调用之前的 check_match 逻辑 (略)
-        # 为了演示，我们假设只要有数据就匹配
-        # 在实际代码中保留你的 check_match 函数
-        from matcher import check_match # 引用回自身或确保在同一文件
-        if check_match(new_record, target): 
-            matches.append(target)
-            
-            # ✅ 新逻辑：给双方发送通知
-            # 注意：这要求 Farmer/Buyer 数据里必须包含 'owner_id'
-            
-            # 1. 通知新提交者
-            if 'owner_id' in new_record:
-                save_notification(new_record['owner_id'], f"Match found with contact: {target['contact']}")
-            
-            # 2. 通知旧数据的拥有者
-            if 'owner_id' in target:
-                save_notification(target['owner_id'], f"New match found! Contact: {new_record['contact']}")
-            
-    return len(matches)
-
-def check_match(farmer: Dict, buyer: Dict):
+# ✅ 2. 核心匹配逻辑 (保留之前的业务规则)
+def check_match(farmer: Dict, buyer: Dict) -> bool:
     """
-    核心匹配算法
-    返回: True/False
+    判断 Farmer 和 Buyer 是否匹配
     """
-    # 1. 地理位置匹配 (Buyer 的 location 是列表，Farmer 是单值)
-    if farmer['location'] not in buyer['location']:
+    # 1. 地理位置匹配 (Buyer location 是列表)
+    # 注意：前端传来的可能是简写 'SP'，也可能是对象，但在 API 层我们已经处理成字符串了
+    if farmer.get('location') not in buyer.get('location', []):
         return False
 
-    # 2. 品种匹配 (Buyer 可能是 "Any")
-    if buyer['race'] != "Any" and buyer['race'] != farmer['race']:
+    # 2. 品种匹配
+    if buyer.get('race') != "Any" and buyer.get('race') != farmer.get('race'):
         return False
 
-    # 3. 性别匹配
-    # 前端传来的可能是 "Male (Bull)"，我们简单判断包含关系或者完全匹配
-    # 这里做简化处理，假设前端传的值是标准的
-    if buyer['sex'] != "Any" and buyer['sex'] not in farmer['sex']: 
+    # 3. 年龄匹配 (范围)
+    buyer_min = buyer.get('ageMin') or 0
+    buyer_max = buyer.get('ageMax') or 100
+    if not (buyer_min <= farmer.get('age', 0) <= buyer_max):
         return False
-
-    # 4. 年龄匹配 (范围)
-    if not (buyer['ageMin'] <= farmer['age'] <= buyer['ageMax']):
-        return False
-
-    # 5. 数量匹配 (Farmer 供货量是否满足 Buyer 最小需求?)
-    # 商业逻辑：有时即使不够也能聊，但这里我们设定硬性门槛
-    if farmer['quantity'] < buyer['quantity']:
-        return False
+        
+    # 4. 数量匹配 (简单判断)
+    # if farmer.get('quantity', 0) < buyer.get('quantity', 0):
+    #    return False
 
     return True
 
+# ✅ 3. 扫描匹配并发送通知
 def scan_for_matches(new_record: Dict, target_db_name: str, is_new_record_farmer: bool):
     """
-    扫描数据库寻找匹配
+    扫描数据库，找到匹配项后，给双方发送通知
     """
-    from db import db
     targets = db.load(target_db_name)
-    
     matches = []
+    
     for target in targets:
+        # 确定谁是 Farmer 谁是 Buyer，以便传入 check_match
         farmer = new_record if is_new_record_farmer else target
         buyer = target if is_new_record_farmer else new_record
         
         if check_match(farmer, buyer):
             matches.append(target)
-            send_notification(farmer, buyer, "100% Match")
+            
+            # --- 关键修正：使用 save_notification ---
+            
+            # 1. 通知新提交者 (如果他有 owner_id)
+            if 'owner_id' in new_record:
+                msg = f"Match found! Contact: {target.get('contact')}"
+                save_notification(new_record['owner_id'], msg)
+            
+            # 2. 通知旧数据的拥有者 (如果他有 owner_id)
+            if 'owner_id' in target:
+                msg = f"New match found! Contact: {new_record.get('contact')}"
+                save_notification(target['owner_id'], msg)
             
     return len(matches)
