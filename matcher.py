@@ -1,0 +1,56 @@
+from typing import List, Dict
+
+# 模拟发送通知（你可以接入 Telegram Bot API）
+def send_notification(farmer, buyer, match_score):
+    print(f"\n🔔 MATCH FOUND ({match_score})!")
+    print(f"   Farmer ({farmer['contact']}): {farmer['quantity']}x {farmer['race']} in {farmer['location']}")
+    print(f"   Buyer  ({buyer['contact']}): Needs {buyer['quantity']}x in {buyer['location']}")
+    print("   -> Notification sent to both parties.\n")
+
+def check_match(farmer: Dict, buyer: Dict):
+    """
+    核心匹配算法
+    返回: True/False
+    """
+    # 1. 地理位置匹配 (Buyer 的 location 是列表，Farmer 是单值)
+    if farmer['location'] not in buyer['location']:
+        return False
+
+    # 2. 品种匹配 (Buyer 可能是 "Any")
+    if buyer['race'] != "Any" and buyer['race'] != farmer['race']:
+        return False
+
+    # 3. 性别匹配
+    # 前端传来的可能是 "Male (Bull)"，我们简单判断包含关系或者完全匹配
+    # 这里做简化处理，假设前端传的值是标准的
+    if buyer['sex'] != "Any" and buyer['sex'] not in farmer['sex']: 
+        return False
+
+    # 4. 年龄匹配 (范围)
+    if not (buyer['ageMin'] <= farmer['age'] <= buyer['ageMax']):
+        return False
+
+    # 5. 数量匹配 (Farmer 供货量是否满足 Buyer 最小需求?)
+    # 商业逻辑：有时即使不够也能聊，但这里我们设定硬性门槛
+    if farmer['quantity'] < buyer['quantity']:
+        return False
+
+    return True
+
+def scan_for_matches(new_record: Dict, target_db_name: str, is_new_record_farmer: bool):
+    """
+    扫描数据库寻找匹配
+    """
+    from db import db
+    targets = db.load(target_db_name)
+    
+    matches = []
+    for target in targets:
+        farmer = new_record if is_new_record_farmer else target
+        buyer = target if is_new_record_farmer else new_record
+        
+        if check_match(farmer, buyer):
+            matches.append(target)
+            send_notification(farmer, buyer, "100% Match")
+            
+    return len(matches)
