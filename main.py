@@ -1,10 +1,13 @@
 import uuid
 import time
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from models import FarmerCreate, Farmer, BuyerCreate, Buyer
 from db import db
 from matcher import scan_for_matches
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
+from auth import get_password_hash, verify_password, create_access_token, get_current_user
 
 app = FastAPI(title="Cattle Match System")
 
@@ -17,6 +20,69 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# 用户模型
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+# 1. 注册接口
+@app.post("/auth/register")
+def register(user: UserRegister):
+    users = db.load("users.json")
+    if any(u['username'] == user.username for u in users):
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    hashed_password = get_password_hash(user.password)
+    new_user = {"username": user.username, "password": hashed_password}
+    db.add_record("users.json", new_user)
+    return {"msg": "User created successfully"}
+
+# 2. 登录接口 (返回 Token)
+@app.post("/auth/token")
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    users = db.load("users.json")
+    user = next((u for u in users if u['username'] == form_data.username), None)
+    
+    if not user or not verify_password(form_data.password, user['password']):
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    access_token = create_access_token(data={"sub": user['username']})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# 3. 获取我的通知 (需要 Token)
+@app.get("/api/notifications")
+def get_my_notifications(current_user: str = Depends(get_current_user)):
+    all_notifs = db.load("notifications.json")
+    # 筛选属于当前用户的通知
+    my_notifs = [n for n in all_notifs if n['user_id'] == current_user]
+    # 按时间倒序
+    return sorted(my_notifs, key=lambda x: x['timestamp'], reverse=True)
+
+# 4. 修改提交接口，记录 "owner_id"
+from models import FarmerCreate, BuyerCreate
+
+@app.post("/api/farmer")
+def create_farmer(data: FarmerCreate, current_user: str = Depends(get_current_user)):
+    record = data.dict()
+    record['id'] = str(uuid.uuid4())
+    record['timestamp'] = time.time()
+    record['owner_id'] = current_user # ✅ 绑定用户
+    
+    db.add_record("farmers.json", record)
+    count = scan_for_matches(record, "buyers.json", True)
+    return {"id": record['id'], "matches_found": count}
+
+@app.post("/api/buyer")
+def create_buyer(data: BuyerCreate, current_user: str = Depends(get_current_user)):
+    record = data.dict()
+    record['id'] = str(uuid.uuid4())
+    record['timestamp'] = time.time()
+    record['owner_id'] = current_user # ✅ 绑定用户
+    
+    db.add_record("buyers.json", record)
+    count = scan_for_matches(record, "farmers.json", False)
+    return {"id": record['id'], "matches_found": count}
 
 @app.get("/api/debug/farmers")
 def get_all_farmers():
