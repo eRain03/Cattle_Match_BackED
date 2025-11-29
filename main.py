@@ -17,6 +17,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/api/debug/farmers")
+def get_all_farmers():
+    """查看所有农场主数据"""
+    from db import db
+    return db.load("farmers.json")
+
+@app.get("/api/debug/buyers")
+def get_all_buyers():
+    """查看所有买家数据"""
+    from db import db
+    return db.load("buyers.json")
+
+@app.get("/api/debug/reset")
+def reset_db():
+    """(可选) 一键清空数据库，方便重新测试"""
+    import os
+    try:
+        if os.path.exists("data/farmers.json"): os.remove("data/farmers.json")
+        if os.path.exists("data/buyers.json"): os.remove("data/buyers.json")
+        return {"msg": "Database reset successful"}
+    except Exception as e:
+        return {"msg": str(e)}
+
+
 @app.get("/")
 def read_root():
     return {"status": "System Operational", "mode": "JSON-DB"}
