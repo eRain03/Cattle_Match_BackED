@@ -35,6 +35,26 @@ def read_root():
 # 1. 认证模块 (Auth)
 # =======================
 
+@app.get("/api/my-listings")
+def get_my_listings(current_user: str = Depends(get_current_user)):
+    # 1. 读取两个库
+    all_farmers = db.load("farmers.json")
+    all_buyers = db.load("buyers.json")
+    
+    # 2. 筛选属于当前用户的
+    my_supply = [f for f in all_farmers if f.get('owner_id') == current_user]
+    my_demand = [b for b in all_buyers if b.get('owner_id') == current_user]
+    
+    # 3. 按时间倒序排列
+    my_supply.sort(key=lambda x: x['timestamp'], reverse=True)
+    my_demand.sort(key=lambda x: x['timestamp'], reverse=True)
+    
+    return {
+        "supply": my_supply,  # 我是 Farmer 卖出的
+        "demand": my_demand   # 我是 Buyer 想买的
+    }
+
+
 @app.post("/auth/register")
 def register(user: UserRegister):
     users = db.load("users.json")
