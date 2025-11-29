@@ -1,5 +1,7 @@
-fastapi 
+fastapi
 uvicorn
-python-jose 
-passlib 
+pydantic
+python-jose[cryptography]
+passlib[bcrypt]
 python-multipart
+bcrypt
