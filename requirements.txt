@@ -2,4 +2,4 @@ fastapi
 uvicorn
 python-jose 
 passlib 
-multipart   
+python-multipart
