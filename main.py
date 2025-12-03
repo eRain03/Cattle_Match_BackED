@@ -31,6 +31,27 @@ class UserRegister(BaseModel):
 def read_root():
     return {"status": "System Operational", "mode": "JSON-DB Auth"}
 
+
+@app.get("/api/market")
+def get_market_data():
+    """获取所有供需数据，按时间倒序排列"""
+    # 1. 读取数据
+    all_farmers = db.load("farmers.json")
+    all_buyers = db.load("buyers.json")
+
+    # 2. 简单的隐私处理：为了演示，市场列表暂不隐藏联系方式
+    # 实际生产中，这里通常会把 contact 字段设为 "***" 或隐藏
+
+    # 3. 排序 (最新的在前面)
+    all_farmers.sort(key=lambda x: x['timestamp'], reverse=True)
+    all_buyers.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    return {
+        "supply": all_farmers,
+        "demand": all_buyers
+    }
+
+
 # =======================
 # 1. 认证模块 (Auth)
 # =======================

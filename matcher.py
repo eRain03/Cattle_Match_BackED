@@ -15,17 +15,40 @@ def save_notification(user_id: str, title: str, details: Dict):
     print(f"🔔 Notification saved for {user_id}")
 
 def check_match(farmer: Dict, buyer: Dict) -> bool:
-    # 1. 地理位置
-    if farmer.get('location') not in buyer.get('location', []):
+    """
+判断 Farmer 和 Buyer 是否匹配
+支持：州+城市 的精确/模糊匹配
+"""
+
+    # 1. 地理位置匹配 (核心逻辑升级)
+    # Buyer 的 targets 是一个列表，例如: [{'state': 'PA', 'city': 'ANY'}, {'state': 'SP', 'city': 'Campinas'}]
+    location_match = False
+    buyer_targets = buyer.get('targets', [])
+
+    farmer_state = farmer.get('state')
+    farmer_city = farmer.get('city')
+
+    for target in buyer_targets:
+        # 先对州
+        if target['state'] == farmer_state:
+            # 再对城市：如果是 "ANY" 或者 城市名完全一致，则匹配
+            if target['city'] == 'ANY' or target['city'] == farmer_city:
+                location_match = True
+                break
+
+    if not location_match:
         return False
-    # 2. 品种
+
+    # 2. 品种匹配
     if buyer.get('race') != "Any" and buyer.get('race') != farmer.get('race'):
         return False
-    # 3. 年龄
+
+    # 3. 年龄匹配
     buyer_min = buyer.get('ageMin') or 0
     buyer_max = buyer.get('ageMax') or 100
     if not (buyer_min <= farmer.get('age', 0) <= buyer_max):
         return False
+
     return True
 
 def scan_for_matches(new_record: Dict, target_db_name: str, is_new_record_farmer: bool):
