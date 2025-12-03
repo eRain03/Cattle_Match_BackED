@@ -4,6 +4,9 @@ from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from mailer import send_contact_info_email
+# 引入 matcher 里的 save_notification 来发站内信
+from matcher import save_notification
 
 # 引入本地模块
 from models import FarmerCreate, BuyerCreate
@@ -163,3 +166,44 @@ def reset_db():
         return {"msg": "Database reset successful"}
     except Exception as e:
         return {"msg": str(e)}
+
+class UnlockRequest(BaseModel):
+    listing_id: str
+    listing_type: str # 'supply' 或 'demand'
+    target_email: str # 用户填写的接收邮箱
+
+@app.post("/api/market/unlock")
+def unlock_listing(req: UnlockRequest, current_user: str = Depends(get_current_user)):
+    """
+付费解锁接口：
+1. 找到该 Listing
+2. 发邮件给请求者 (req.target_email)
+3. 发站内信给请求者 (current_user)
+    """
+    # 1. 查找 Listing
+    db_file = "farmers.json" if req.listing_type == 'supply' else "buyers.json"
+    listings = db.load(db_file)
+    target_item = next((item for item in listings if item['id'] == req.listing_id), None)
+
+    if not target_item:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    # 2. 准备数据
+    info = {
+        "type": req.listing_type.upper(),
+        "race": target_item.get('race'),
+        "location": target_item.get('city', 'Unknown') if req.listing_type == 'supply' else "Multiple Regions",
+        "contact": target_item.get('contact')
+    }
+
+    # 3. 发送邮件给购买者
+    send_contact_info_email(req.target_email, info)
+
+    # 4. 发送站内信给购买者
+    save_notification(
+        user_id=current_user,
+        title=f"Unlocked: {info['race']}",
+        details=info # 这样用户在站内信里也能看到解锁后的电话
+    )
+
+    return {"status": "success", "msg": "Contact details sent to your email."}
