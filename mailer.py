@@ -133,4 +133,4 @@ Good luck with your negotiation!
         print(f"✅ Contact info sent to {to_email}")
 
     except Exception as e:
-        print(f"❌ Failed to send contact info: {e}")
+        print(f"❌ Failed to send contact info: {e}") 
